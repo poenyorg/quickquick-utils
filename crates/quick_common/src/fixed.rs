@@ -1,0 +1,306 @@
+// fixed.rs
+// ===============================
+// Fixed-point arithmetic for trading system
+// Global scale = 1e8
+// Wire: int64
+// Core: i128
+// ===============================
+
+use std::fmt;
+use std::iter::Sum;
+use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+use std::str::FromStr;
+use std::string::ParseError;
+
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+
+pub const SCALE: i128 = 100_000_000;
+pub const SCALE_I64: i64 = 100_000_000;
+pub const SCALE_DIGITS: u32 = 8;
+
+/// Wrapper kiểu fixed-point (1e8) sử dụng nội bộ là i128
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
+pub struct Fixed(pub i128);
+
+impl Fixed {
+    pub fn value(&self) -> i128 {
+        self.0
+    }
+    /// Tạo từ wire i64 (gRPC)
+    #[inline(always)]
+    pub fn from_wire(v: i64) -> Self {
+        Fixed(v as i128)
+    }
+
+    pub fn from_i64(v: i64) -> Self {
+        Fixed((v * SCALE_I64) as i128)
+    }
+
+    /// Tạo từ f64 (CHỈ dùng debug / test / nhập liệu)
+    #[allow(dead_code)]
+    pub fn from_f64(v: f64) -> Self {
+        Fixed((v * SCALE as f64).round() as i128)
+    }
+
+    pub fn from_decimal(d: Decimal) -> Fixed {
+        // Chuẩn hoá Decimal về scale = 8 (1e8)
+        let mut c_d = d;
+        c_d.rescale(SCALE_DIGITS);
+
+        // Lấy mantissa i128 trực tiếp
+        Fixed(c_d.mantissa())
+    }
+
+    pub fn from_opt_str(s: &Option<String>) -> Self {
+        if s.is_none() {
+            Fixed(0)
+        } else {
+            Self::from_str(&s.clone().unwrap()).unwrap()
+        }
+    }
+
+    pub fn from_opt_str_opt(s: &Option<String>) -> Option<Self> {
+        if s.is_none() {
+            None
+        } else {
+            Some(Self::from_str(&s.clone().unwrap()).unwrap())
+        }
+    }
+
+    /// Convert sang f64 (CHỈ dùng hiển thị)
+    #[allow(dead_code)]
+    pub fn to_f64(self) -> f64 {
+        self.0 as f64 / SCALE as f64
+    }
+
+    /// Convert về wire i64 để gửi gRPC
+    #[inline(always)]
+    pub fn to_wire(self) -> i64 {
+        if self.0 > i64::MAX as i128 || self.0 < i64::MIN as i128 {
+            panic!("Fixed overflow when converting to i64 wire");
+        }
+        self.0 as i64
+    }
+
+    pub fn to_decimal(&self) -> Decimal {
+        Decimal::from_i128_with_scale(self.0, SCALE_DIGITS)
+    }
+
+    /// Multiply fixed-point
+    #[inline]
+    pub fn mul_fixed_point(self, rhs: Fixed) -> Fixed {
+        Fixed((self.0 * rhs.0) / SCALE)
+    }
+
+    /// Divide fixed-point
+    #[inline]
+    pub fn div_fixed_point(self, rhs: Fixed) -> Fixed {
+        Fixed((self.0 * SCALE) / rhs.0)
+    }
+
+    /// Rounding theo tick size
+    pub fn round_to(self, tick: Fixed) -> Fixed {
+        Fixed((self.0 / tick.0) * tick.0)
+    }
+
+    /// Abs
+    pub fn abs(self) -> Fixed {
+        Fixed(self.0.abs())
+    }
+
+    /// Zero
+    pub fn zero() -> Fixed {
+        Fixed(0)
+    }
+
+    pub fn as_negative(self) -> Fixed {
+        if self.0.is_positive() {
+            return Fixed(-self.0);
+        }
+        self
+    }
+
+    pub fn swap_neg(self, is_neg: bool) -> Fixed {
+        if is_neg && self.0.is_positive() {
+            return Fixed(-self.0);
+        }
+        self
+    }
+}
+
+// ===========================
+// Trait Implementations
+// ===========================
+
+impl FromStr for Fixed {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let negative = s.starts_with('-');
+        let s = s.trim_start_matches('-');
+
+        let parts: Vec<&str> = s.split('.').collect();
+        let int: i128 = parts[0].parse().unwrap();
+
+        let frac = if parts.len() > 1 {
+            let mut frac = parts[1].to_string();
+            frac.truncate(8);
+            while frac.len() < 8 {
+                frac.push('0');
+            }
+            frac.parse::<i128>().unwrap()
+        } else {
+            0
+        };
+
+        let v = int * SCALE + frac;
+        Ok(Self(if negative { -v } else { v }))
+    }
+}
+
+impl Add for Fixed {
+    type Output = Fixed;
+
+    fn add(self, rhs: Fixed) -> Fixed {
+        Fixed(self.0 + rhs.0)
+    }
+}
+
+impl Sub for Fixed {
+    type Output = Fixed;
+
+    fn sub(self, rhs: Fixed) -> Fixed {
+        Fixed(self.0 - rhs.0)
+    }
+}
+
+impl Mul<i128> for Fixed {
+    type Output = Fixed;
+
+    fn mul(self, rhs: i128) -> Fixed {
+        Fixed(self.0 * rhs)
+    }
+}
+
+impl Div<i128> for Fixed {
+    type Output = Fixed;
+
+    fn div(self, rhs: i128) -> Fixed {
+        Fixed(self.0 / rhs)
+    }
+}
+
+impl SubAssign for Fixed {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Fixed) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl AddAssign for Fixed {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Fixed) {
+        self.0 += rhs.0;
+    }
+}
+
+impl Sum for Fixed {
+    #[inline]
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        iter.fold(Fixed::zero(), |acc, x| Fixed(acc.0 + x.0))
+    }
+}
+
+impl<'a> Sum<&'a Fixed> for Fixed {
+    #[inline]
+    fn sum<I: Iterator<Item = &'a Fixed>>(iter: I) -> Self {
+        iter.fold(Fixed::zero(), |acc, x| Fixed(acc.0 + x.0))
+    }
+}
+
+impl fmt::Debug for Fixed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl fmt::Display for Fixed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let neg = self.0 < 0;
+        let abs = self.0.abs();
+
+        let int = abs / SCALE;
+        let frac = abs % SCALE;
+
+        let out = format!("{}{}.{:8}", if neg { "-" } else { "" }, int, frac);
+        write!(f, "{}", out)
+    }
+}
+
+// ===========================
+// Vì muda ghi panic, nên nên wrap các checked ops nếu muốn production strict
+// ===========================
+
+impl Fixed {
+    pub fn checked_add(self, rhs: Fixed) -> Option<Fixed> {
+        self.0.checked_add(rhs.0).map(Fixed)
+    }
+
+    pub fn checked_sub(self, rhs: Fixed) -> Option<Fixed> {
+        self.0.checked_sub(rhs.0).map(Fixed)
+    }
+
+    pub fn checked_mul(self, rhs: Fixed) -> Option<Fixed> {
+        self.0
+            .checked_mul(rhs.0)
+            .and_then(|v| v.checked_div(SCALE))
+            .map(Fixed)
+    }
+
+    pub fn checked_div(self, rhs: Fixed) -> Option<Fixed> {
+        self.0
+            .checked_mul(SCALE)
+            .and_then(|v| v.checked_div(rhs.0))
+            .map(Fixed)
+    }
+}
+
+// ===========================
+// TEST
+// ===========================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_and_format() {
+        let x = Fixed::from_str("65000.12345678").unwrap();
+        assert_eq!(x.to_string(), "65000.12345678");
+    }
+
+    #[test]
+    fn test_mul() {
+        let a = Fixed::from_str("100.0").unwrap();
+        let b = Fixed::from_str("0.5").unwrap();
+        let c = a.mul_fixed_point(b);
+        assert_eq!(c.to_string(), "50.00000000");
+    }
+
+    #[test]
+    fn test_wire() {
+        let x = Fixed::from_str("42.1").unwrap();
+        let wire = x.to_wire();
+        let back = Fixed::from_wire(wire);
+        assert_eq!(x, back);
+    }
+
+    #[test]
+    fn test_round() {
+        let p = Fixed::from_str("100.12345678").unwrap();
+        let tick = Fixed::from_str("0.01").unwrap();
+        let r = p.round_to(tick);
+        assert_eq!(r.to_string(), "100.12000000");
+    }
+}
