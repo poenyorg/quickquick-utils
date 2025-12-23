@@ -100,8 +100,20 @@ impl Fixed {
     }
 
     /// Rounding theo tick size
-    pub fn round_to(self, tick: Fixed) -> Fixed {
-        Fixed((self.0 / tick.0) * tick.0)
+    pub fn round_up(self, tick: Fixed) -> Fixed {
+        let remainder = self.0 % tick.0;
+        if remainder != 0 {
+            return Fixed(self.0 + tick.0 - remainder);
+        }
+        self
+    }
+
+    pub fn round_down(self, tick: Fixed) -> Fixed {
+        let remainder = self.0 % tick.0;
+        if remainder != 0 {
+            return Fixed(self.0 - remainder);
+        }
+        self
     }
 
     /// Abs
@@ -112,6 +124,22 @@ impl Fixed {
     /// Zero
     pub fn zero() -> Fixed {
         Fixed(0)
+    }
+
+    pub fn is_zero(self) -> bool {
+        self.0 == 0
+    }
+
+    pub fn is_positive(self) -> bool {
+        self.0 > 0
+    }
+
+    pub fn is_negative(self) -> bool {
+        self.0 < 0
+    }
+
+    pub fn reverse(self) -> Fixed {
+        Fixed(-self.0)
     }
 
     pub fn as_negative(self) -> Fixed {
@@ -281,6 +309,14 @@ mod tests {
     }
 
     #[test]
+    fn test_reverse() {
+        let x = Fixed::from_str("100").unwrap();
+        let y = Fixed::from_str("-100").unwrap();
+        assert_eq!(Fixed::from_i64(-100), x.reverse());
+        assert_eq!(Fixed::from_i64(100), y.reverse());
+    }
+
+    #[test]
     fn test_mul() {
         let a = Fixed::from_str("100.0").unwrap();
         let b = Fixed::from_str("0.5").unwrap();
@@ -297,10 +333,18 @@ mod tests {
     }
 
     #[test]
-    fn test_round() {
+    fn test_round_up() {
         let p = Fixed::from_str("100.12345678").unwrap();
         let tick = Fixed::from_str("0.01").unwrap();
-        let r = p.round_to(tick);
+        let r = p.round_up(tick);
+        assert_eq!(r.to_string(), "100.13000000");
+    }
+
+    #[test]
+    fn test_round_down() {
+        let p = Fixed::from_str("100.12345678").unwrap();
+        let tick = Fixed::from_str("0.01").unwrap();
+        let r = p.round_down(tick);
         assert_eq!(r.to_string(), "100.12000000");
     }
 }
