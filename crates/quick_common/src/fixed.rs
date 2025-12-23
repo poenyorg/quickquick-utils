@@ -99,6 +99,18 @@ impl Fixed {
         Fixed((self.0 * SCALE) / rhs.0)
     }
 
+    pub fn percent_of(self, percent: Fixed) -> Fixed {
+        Fixed((self.0 * percent.0) / (SCALE * 100))
+    }
+
+    pub fn round_to(self, tick: Fixed, is_up: bool) -> Fixed {
+        if is_up {
+            self.round_up(tick)
+        } else {
+            self.round_down(tick)
+        }
+    }
+
     /// Rounding theo tick size
     pub fn round_up(self, tick: Fixed) -> Fixed {
         let remainder = self.0 % tick.0;
