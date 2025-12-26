@@ -49,7 +49,8 @@ impl OrderStatus {
             2 => Some(Self::Filled),
             3 => Some(Self::PartiallyFilled),
             4 => Some(Self::Canceled),
-            5 => Some(Self::Rejected),
+            5 => Some(Self::Expired),
+            6 => Some(Self::Rejected),
             _ => None,
         }
     }
