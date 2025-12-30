@@ -1,6 +1,7 @@
 pub type Cloid = String;
 pub type ExchangeId = u32;
 pub type InnerMarketId = u32;
+pub type AssetId = u32; // assetid same inner marketid
 pub type InnerOrderId = String;
 pub type Symbol = String; // Like BTC/ETH
 pub type MarketName = String; // Like BTC-USDT/ BTC-USD
