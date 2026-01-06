@@ -6,6 +6,8 @@
 // Core: i128
 // ===============================
 
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
@@ -13,14 +15,13 @@ use std::str::FromStr;
 use std::string::ParseError;
 
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
 
 pub const SCALE: i128 = 100_000_000;
 pub const SCALE_I64: i64 = 100_000_000;
 pub const SCALE_DIGITS: u32 = 8;
 
 /// Wrapper kiểu fixed-point (1e8) sử dụng nội bộ là i128
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Fixed(pub i128);
 
 impl Fixed {
@@ -273,7 +274,7 @@ impl fmt::Display for Fixed {
         let int = abs / SCALE;
         let frac = abs % SCALE;
 
-        let out = format!("{}{}.{:8}", if neg { "-" } else { "" }, int, frac);
+        let out = format!("{}{}.{:08}", if neg { "-" } else { "" }, int, frac);
         write!(f, "{}", out)
     }
 }
@@ -307,6 +308,168 @@ impl Fixed {
 }
 
 // ===========================
+// Custom Serialization cho Fixed
+// ===========================
+
+impl Serialize for Fixed {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize as string để giữ độ chính xác
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Fixed {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(FixedVisitor)
+    }
+}
+
+struct FixedVisitor;
+
+impl<'de> Visitor<'de> for FixedVisitor {
+    type Value = Fixed;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a string, integer, or float representing a fixed-point number")
+    }
+
+    // Deserialize từ string
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Fixed::from_str(value)
+            .map_err(|_| E::custom(format!("invalid fixed-point string: {}", value)))
+    }
+
+    // Deserialize từ i64
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Fixed::from_wire(value))
+    }
+
+    // Deserialize từ u64
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        if value > i64::MAX as u64 {
+            return Err(E::custom(format!("u64 value {} exceeds i64::MAX", value)));
+        }
+        Ok(Fixed::from_wire(value as i64))
+    }
+
+    // Deserialize từ f64 (ít chính xác hơn, chỉ dùng khi cần)
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(Fixed::from_f64(value))
+    }
+}
+
+// ===========================
+// Các module serialize tùy chỉnh
+// ===========================
+
+/// Module để serialize/deserialize Fixed as i64 (wire format)
+pub mod fixed_as_i64 {
+    use super::*;
+
+    pub fn serialize<S>(value: &Fixed, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i64(value.to_wire())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Fixed, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let v = i64::deserialize(deserializer)?;
+        Ok(Fixed::from_wire(v))
+    }
+}
+
+/// Module để serialize/deserialize Fixed as string
+pub mod fixed_as_string {
+    use super::*;
+
+    pub fn serialize<S>(value: &Fixed, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Fixed, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Fixed::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
+/// Module để serialize/deserialize Option<Fixed> as i64
+pub mod option_fixed_as_i64 {
+    use super::*;
+
+    pub fn serialize<S>(value: &Option<Fixed>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(f) => serializer.serialize_some(&f.to_wire()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Fixed>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt = Option::<i64>::deserialize(deserializer)?;
+        Ok(opt.map(Fixed::from_wire))
+    }
+}
+
+/// Module để serialize/deserialize Option<Fixed> as string
+pub mod option_fixed_as_string {
+    use super::*;
+
+    pub fn serialize<S>(value: &Option<Fixed>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(f) => serializer.serialize_some(&f.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Fixed>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt = Option::<String>::deserialize(deserializer)?;
+        match opt {
+            Some(s) => Fixed::from_str(&s).map(Some).map_err(de::Error::custom),
+            None => Ok(None),
+        }
+    }
+}
+
+// ===========================
 // TEST
 // ===========================
 
@@ -316,8 +479,8 @@ mod tests {
 
     #[test]
     fn test_parse_and_format() {
-        let x = Fixed::from_str("65000.12345678").unwrap();
-        assert_eq!(x.to_string(), "65000.12345678");
+        let x = Fixed::from_str("65000.00012345").unwrap();
+        assert_eq!(x.to_string(), "65000.00012345");
     }
 
     #[test]
@@ -359,4 +522,56 @@ mod tests {
         let r = p.round_down(tick);
         assert_eq!(r.to_string(), "100.12000000");
     }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct Example {
+        // Default: serialize as string
+        price: Fixed,
+
+        // Explicit: serialize as i64 (wire format)
+        #[serde(with = "fixed_as_i64")]
+        quantity: Fixed,
+
+        // Optional field as string
+        #[serde(with = "option_fixed_as_string")]
+        fee: Option<Fixed>,
+
+        // Optional field as i64
+        #[serde(with = "option_fixed_as_i64")]
+        commission: Option<Fixed>,
+    }
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let example = Example {
+            price: Fixed::from_str("123.456").unwrap(),
+            quantity: Fixed::from_str("10.5").unwrap(),
+            fee: Some(Fixed::from_str("0.01").unwrap()),
+            commission: None,
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&example).unwrap();
+        println!("JSON: {}", json);
+
+        // Deserialize from JSON
+        let parsed: Example = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.price, example.price);
+        assert_eq!(parsed.quantity, example.quantity);
+        assert_eq!(parsed.fee, example.fee);
+        assert_eq!(parsed.commission, example.commission);
+    }
+
+    #[test]
+    fn test_deserialize_from_int() {
+        // Test deserialize từ integer (wire format)
+        let json = r#"{"price":"123.456","quantity":1050000000,"fee":"0.01","commission":null}"#;
+        let parsed: Example = serde_json::from_str(json).unwrap();
+
+        assert_eq!(parsed.quantity, Fixed::from_str("10.5").unwrap());
+        assert_eq!(parsed.price, Fixed::from_str("123.456").unwrap());
+        assert_eq!(parsed.fee, Some(Fixed::from_str("0.01").unwrap()));
+        assert_eq!(parsed.commission, None);
+    }
+
 }
