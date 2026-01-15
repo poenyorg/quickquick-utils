@@ -5,3 +5,5 @@ pub type AssetId = u32; // assetid same inner marketid
 pub type InnerOrderId = String;
 pub type Symbol = String; // Like BTC/ETH
 pub type MarketName = String; // Like BTC-USDT/ BTC-USD
+pub type Timestamp = i64;
+pub type TimestampU64 = u64;

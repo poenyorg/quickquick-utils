@@ -1,5 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::types::Timestamp;
+#[deprecated(since = "0.1.9", note = "please use `now_ms` instead")]
 pub fn get_timestamp() -> i64 {
     let start = SystemTime::now();
     let since_the_epoch = start
@@ -8,8 +10,26 @@ pub fn get_timestamp() -> i64 {
 
     since_the_epoch.as_millis() as i64
 }
-
+#[deprecated(since = "0.1.9", note = "please use `now_sec` instead")]
 pub fn get_timestamp_as_sec() -> i64 {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    since_the_epoch.as_secs() as i64
+}
+
+pub fn now_ms() -> Timestamp {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    since_the_epoch.as_millis() as i64
+}
+
+pub fn now_sec() -> Timestamp {
     let start = SystemTime::now();
     let since_the_epoch = start
         .duration_since(UNIX_EPOCH)

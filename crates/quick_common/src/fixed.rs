@@ -19,7 +19,8 @@ use rust_decimal::Decimal;
 pub const SCALE: i128 = 100_000_000;
 pub const SCALE_I64: i64 = 100_000_000;
 pub const SCALE_DIGITS: u32 = 8;
-
+pub const ZERO: Fixed = Fixed(0);
+pub const ONE: Fixed = Fixed(SCALE);
 /// Wrapper kiểu fixed-point (1e8) sử dụng nội bộ là i128
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Fixed(pub i128);
