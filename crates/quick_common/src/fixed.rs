@@ -16,16 +16,35 @@ use std::string::ParseError;
 
 use rust_decimal::Decimal;
 
-pub const SCALE: i128 = 100_000_000;
-pub const SCALE_I64: i64 = 100_000_000;
-pub const SCALE_DIGITS: u32 = 8;
-pub const ZERO: Fixed = Fixed(0);
-pub const ONE: Fixed = Fixed(SCALE);
+const SCALE: i128 = 100_000_000;
+const SCALE_I64: i64 = 100_000_000;
+const SCALE_DIGITS: u32 = 8;
+const ZERO: Fixed = Fixed(0);
+const ONE: Fixed = Fixed(SCALE);
+const TWO: Fixed = Fixed(2 * SCALE);
+const TEN: Fixed = Fixed(10 * SCALE);
+const ONE_HUNDRED: Fixed = Fixed(100 * SCALE);
+const ONE_THOUSAND: Fixed = Fixed(1000 * SCALE);
+const MIN: Fixed = Fixed(i64::MIN as i128 * SCALE);
+const MAX: Fixed = Fixed(i64::MAX as i128 * SCALE);
+
 /// Wrapper kiểu fixed-point (1e8) sử dụng nội bộ là i128
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct Fixed(pub i128);
 
 impl Fixed {
+    pub const SCALE: i128 = SCALE;
+    pub const SCALE_I64: i64 = SCALE_I64;
+    pub const SCALE_DIGITS: u32 = SCALE_DIGITS;
+    pub const ZERO: Fixed = ZERO;
+    pub const ONE: Fixed = ONE;
+    pub const TWO: Fixed = TWO;
+    pub const TEN: Fixed = TEN;
+    pub const ONE_HUNDRED: Fixed = ONE_HUNDRED;
+    pub const ONE_THOUSAND: Fixed = ONE_THOUSAND;
+    pub const MIN: Fixed = MIN;
+    pub const MAX: Fixed = MAX;
+
     pub fn value(&self) -> i128 {
         self.0
     }
@@ -574,5 +593,4 @@ mod tests {
         assert_eq!(parsed.fee, Some(Fixed::from_str("0.01").unwrap()));
         assert_eq!(parsed.commission, None);
     }
-
 }
