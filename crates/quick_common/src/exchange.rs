@@ -56,7 +56,7 @@ impl OrderStatus {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone, Copy, Deserialize, Serialize, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(i32)]
 pub enum TimeInForce {
     Ioc = 0,
@@ -68,7 +68,7 @@ pub enum TimeInForce {
     Hiden = 5,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone, Copy, Deserialize, Serialize, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(i32)]
 pub enum OrderType {
     Limit = 0,
